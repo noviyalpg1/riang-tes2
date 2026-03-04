@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RIANG - Platform Edukasi Digital</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel (untuk JSX) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .slide-up { animation: slideUp 0.3s ease-out; }
+
+        @keyframes slideDown { from { transform: translate(-50%, -20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+        .slide-down { animation: slideDown 0.3s ease-out forwards; }
+
+        * { -webkit-tap-highlight-color: transparent; }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        @keyframes slideRight { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.FirebaseAPI = {
+            initializeApp, getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged,
+            getFirestore, doc, setDoc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove
+        };
+        
+        window.dispatchEvent(new Event('firebase-loaded'));
+    </script>
+
+    <script type="text/babel">
+        const startReactApp = () => {
+            const { initializeApp, getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged,
+                    getFirestore, doc, setDoc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove } = window.FirebaseAPI;
+
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+            const { useState, useEffect, useRef } = React;
+
+            const API_URL = "https://script.google.com/macros/s/AKfycbz0AD7fIxJd56XA99CmCoFCJP_LIe6VJQ8LxuE9eEpfU8m9H3nZ9inQny-iK-OBoPqR/exec";
+
+            function App() {
+                const [currentTab, setCurrentTab] = useState('hero');
+                const [selectedSubject, setSelectedSubject] = useState(null);
+                const [isLoadingAPI, setIsLoadingAPI] = useState(false);
+
+                const [globalNotification, setGlobalNotification] = useState('');
+                const [searchQuery, setSearchQuery] = useState('');
+                const [currentPage, setCurrentPage] = useState(1);
+                const [itemsPerPage, setItemsPerPage] = useState(6);
+
+                useEffect(() => {
+                    setCurrentPage(1);
+                    setSearchQuery('');
+                }, [selectedSubject]);
+
+                const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+                const [showPasswordModal, setShowPasswordModal] = useState(false);
+                const [adminPasswordInput, setAdminPasswordInput] = useState('');
+                const [passwordError, setPasswordError] = useState('');
+
+                const [adminTab, setAdminTab] = useState('media');
+                const [deleteModalConfig, setDeleteModalConfig] = useState({ isOpen: false, type: null, id: null });
+
+                // ===== STATE EDIT & FORM =====
+                const [editingMediaId, setEditingMediaId] = useState(null);
+                const [editingContribId, setEditingContribId] = useState(null);
+                const [editingTestiId, setEditingTestiId] = useState(null);
+
+                // Media
+                const [isAddMediaModalOpen, setIsAddMediaModalOpen] = useState(false);
+                const initialMediaForm = { judul: '', kontributor: '', kurator: '', mapel: '', kelas: '', jenis: '', rating: '5', link: '', deskripsi: '' };
+                const [mediaForm, setMediaForm] = useState(initialMediaForm);
+
+                // Kontributor
+                const [isAddContribModalOpen, setIsAddContribModalOpen] = useState(false);
+                const initialContribForm = { name: '', role: '', initial: '', level: '', desc: '', xp: 0 };
+                const [contribForm, setContribForm] = useState(initialContribForm);
+
+                // Testimoni
+                const [isEditTestiModalOpen, setIsEditTestiModalOpen] = useState(false);
+                const initialTestiForm = { name: '', role: '', quote: '', rating: '5' };
+                const [adminTestiForm, setAdminTestiForm] = useState(initialTestiForm);
+
+                const [isTestiModalOpen, setIsTestiModalOpen] = useState(false);
+                const [publicTesti, setPublicTesti] = useState(initialTestiForm);
+
+                // ===== STATE LAPORAN KONTEN =====
+                const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+                const [reportingMedia, setReportingMedia] = useState(null); // Menyimpan {id, judul}
+                const initialReportForm = { name: '', school: '', reason: '' };
+                const [reportForm, setReportForm] = useState(initialReportForm);
+
+                const [user, setUser] = useState(null);
+                const [likesData, setLikesData] = useState({});
+
+                // Data Dummy
+                const [mediaList, setMediaList] = useState([
+                    { id: 1, judul: 'Pecahan Dasar', kontributor: 'Nisa Salsabila', kurator: 'Admin', mapel: 'Matematika', kelas: 'Kelas 4', jenis: 'Video Pembelajaran', rating: 5, link: '#', deskripsi: 'Animasi konsep pecahan dengan pizza.' },
+                    { id: 2, judul: 'Pahlawan Nasional', kontributor: 'Rizky Pratama', kurator: 'Admin', mapel: 'Pancasila', kelas: 'Kelas 5', jenis: 'E-book', rating: 5, link: '#', deskripsi: 'Buku digital pahlawan kemerdekaan.' },
+                ]);
+
+                const [contributors, setContributors] = useState([
+                    { id: 101, name: "Nisa Salsabila", role: "Guru SDN 1", xp: 5200, initial: "NS", level: "Level 3 - Master", desc: "Aktif membagikan video interaktif." },
+                    { id: 102, name: "Rizky Pratama", role: "Guru SDN 4", xp: 4850, initial: "RP", level: "Level 2 - Contributors", desc: "Sering membuat E-book sejarah." },
+                ]);
+
+                const [testimonials, setTestimonials] = useState([
+                    { id: 1, name: "Budi S.", role: "Siswa SD", quote: "Belajar matematika jadi tidak membosankan lagi sejak pakai RIANG!", rating: 5 },
+                    { id: 2, name: "Siti A.", role: "Guru", quote: "Sangat membantu memberikan tugas interaktif untuk anak murid.", rating: 5 },
+                ]);
+
+                const [reports, setReports] = useState([
+                    { id: 1, mediaId: 2, mediaTitle: 'Pahlawan Nasional', name: 'Andi', school: 'SDN 2 Tanjung Karang', reason: 'Terdapat kesalahan ketik pada tanggal sejarah di halaman 5.', status: 'Menunggu', date: '2026-03-04' }
+                ]);
+
+                useEffect(() => {
+                    const fetchBackendData = async () => {
+                        setIsLoadingAPI(true);
+                        try {
+                            const response = await fetch(API_URL);
+                            const result = await response.json();
+                            if (result.media && Array.isArray(result.media)) setMediaList(result.media);
+                            if (result.contributors && Array.isArray(result.contributors)) setContributors(result.contributors);
+                            if (result.testimonials && Array.isArray(result.testimonials)) setTestimonials(result.testimonials);
+                            if (result.reports && Array.isArray(result.reports)) setReports(result.reports);
+                        } catch (error) {
+                            console.warn("Gagal mengambil data dari API, menggunakan data Dummy lokal.", error);
+                        } finally {
+                            setIsLoadingAPI(false);
+                        }
+                    };
+                    fetchBackendData();
+                }, []);
+
+                useEffect(() => {
+                    const initAuth = async () => {
+                        try {
+                            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                                await signInWithCustomToken(auth, __initial_auth_token);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                        } catch (e) {
+                            console.error("Firebase Auth Error:", e);
+                        }
+                    };
+                    initAuth();
+                    const unsubscribe = onAuthStateChanged(auth, setUser);
+                    return () => unsubscribe();
+                }, []);
+
+                useEffect(() => {
+                    if (!user) return;
+                    const likesRef = collection(db, 'artifacts', appId, 'public', 'data', 'media_likes');
+                    const unsubscribe = onSnapshot(likesRef, (snapshot) => {
+                        const newLikes = {};
+                        snapshot.forEach(doc => { newLikes[doc.id] = doc.data(); });
+                        setLikesData(newLikes);
+                    }, (error) => {
+                        console.error("Error mengambil data likes realtime:", error);
+                    });
+                    return () => unsubscribe();
+                }, [user]);
+
+                const postToBackend = async (actionType, payloadData) => {
+                    try {
+                        await fetch(API_URL, {
+                            method: 'POST',
+                            mode: 'no-cors', 
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({ action: actionType, data: payloadData })
+                        });
+                    } catch (error) {
+                        console.error("Gagal mengirim data ke backend:", error);
+                    }
+                };
+
+                const subjects = [
+                    { id: 'mtk', name: 'Matematika', icon: 'fas fa-calculator', color: 'bg-purple-100 text-purple-600' },
+                    { id: 'pancasila', name: 'Pancasila', icon: 'fas fa-shield-alt', color: 'bg-red-100 text-red-600' },
+                    { id: 'ipas', name: 'IPAS', icon: 'fas fa-flask', color: 'bg-green-100 text-green-600' },
+                    { id: 'bindo', name: 'B. Indonesia', icon: 'fas fa-font', color: 'bg-blue-100 text-blue-600' },
+                    { id: 'agama', name: 'Pend. Agama', icon: 'fas fa-book-reader', color: 'bg-emerald-100 text-emerald-600' },
+                    { id: 'pjok', name: 'PJOK', icon: 'fas fa-running', color: 'bg-orange-100 text-orange-600' },
+                    { id: 'seni', name: 'Seni Budaya', icon: 'fas fa-palette', color: 'bg-pink-100 text-pink-600' },
+                    { id: 'tik', name: 'Informatika', icon: 'fas fa-laptop-code', color: 'bg-cyan-100 text-cyan-600' },
+                    { id: 'inggris', name: 'B. Inggris', icon: 'fas fa-language', color: 'bg-indigo-100 text-indigo-600' },
+                    { id: 'game', name: 'Game PID', icon: 'fas fa-gamepad', color: 'bg-violet-100 text-violet-600' },
+                    { id: 'lainnya', name: 'Lainnya', icon: 'fas fa-th-large', color: 'bg-slate-200 text-slate-600' }
+                ];
+
+                const switchTab = (tabId) => { setCurrentTab(tabId); setSelectedSubject(null); };
+                const showToast = (msg) => { setGlobalNotification(msg); setTimeout(() => setGlobalNotification(''), 4000); };
+
+                const handleLikeToggle = async (mediaId) => {
+                    if (!user) return showToast("Sedang menghubungkan ke server...");
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'media_likes', String(mediaId));
+                    const currentData = likesData[mediaId];
+                    const hasLiked = currentData && currentData.likedBy && currentData.likedBy.includes(user.uid);
+                    try {
+                        if (!currentData) await setDoc(docRef, { count: 1, likedBy: [user.uid] });
+                        else if (hasLiked) await updateDoc(docRef, { count: Math.max(0, currentData.count - 1), likedBy: arrayRemove(user.uid) });
+                        else await updateDoc(docRef, { count: currentData.count + 1, likedBy: arrayUnion(user.uid) });
+                    } catch (err) { showToast("Gagal menyukai materi."); }
+                };
+
+                const handleAuth = (e) => {
+                    e.preventDefault();
+                    if (adminPasswordInput === 'k0mbel') { 
+                        setIsAdminAuthenticated(true);
+                        setShowPasswordModal(false);
+                        switchTab('admin');
+                    } else {
+                        setPasswordError('Password salah! Sila cuba lagi.');
+                    }
+                    setAdminPasswordInput('');
+                };
+
+                // ===== HANDLERS SUBMIT & EDIT =====
+
+                const openAddMedia = () => { setEditingMediaId(null); setMediaForm(initialMediaForm); setIsAddMediaModalOpen(true); };
+                const openEditMedia = (m) => { setEditingMediaId(m.id); setMediaForm(m); setIsAddMediaModalOpen(true); };
+                
+                const handleMediaSubmit = (e) => {
+                    e.preventDefault();
+                    if (editingMediaId) {
+                        const updatedMedia = { ...mediaForm, id: editingMediaId, rating: Number(mediaForm.rating) };
+                        setMediaList(mediaList.map(m => m.id === editingMediaId ? updatedMedia : m));
+                        postToBackend('EDIT_MEDIA', updatedMedia);
+                        showToast("Materi berhasil diperbarui!");
+                    } else {
+                        const newMedia = { ...mediaForm, id: Date.now(), rating: Number(mediaForm.rating) };
+                        setMediaList([newMedia, ...mediaList]);
+                        postToBackend('ADD_MEDIA', newMedia);
+                        showToast("Materi berhasil ditambahkan!");
+                    }
+                    setIsAddMediaModalOpen(false);
+                };
+
+                const openAddContrib = () => { setEditingContribId(null); setContribForm(initialContribForm); setIsAddContribModalOpen(true); };
+                const openEditContrib = (c) => { setEditingContribId(c.id); setContribForm(c); setIsAddContribModalOpen(true); };
+
+                const handleContribSubmit = (e) => {
+                    e.preventDefault();
+                    if (editingContribId) {
+                        const updatedContrib = { ...contribForm, id: editingContribId };
+                        setContributors(contributors.map(c => c.id === editingContribId ? updatedContrib : c));
+                        postToBackend('EDIT_CONTRIB', updatedContrib);
+                        showToast("Kontributor berhasil diperbarui!");
+                    } else {
+                        const newContrib = { ...contribForm, id: Date.now(), xp: 0 };
+                        setContributors([newContrib, ...contributors]);
+                        postToBackend('ADD_CONTRIB', newContrib);
+                        showToast("Kontributor berhasil ditambahkan!");
+                    }
+                    setIsAddContribModalOpen(false);
+                };
+
+                const openEditTesti = (t) => { setEditingTestiId(t.id); setAdminTestiForm(t); setIsEditTestiModalOpen(true); };
+                
+                const handleAdminTestiSubmit = (e) => {
+                    e.preventDefault();
+                    if (editingTestiId) {
+                        const updatedTesti = { ...adminTestiForm, id: editingTestiId, rating: Number(adminTestiForm.rating) };
+                        setTestimonials(testimonials.map(t => t.id === editingTestiId ? updatedTesti : t));
+                        postToBackend('EDIT_TESTI', updatedTesti);
+                        showToast("Testimoni berhasil diperbarui!");
+                    }
+                    setIsEditTestiModalOpen(false);
+                };
+
+                const handlePublicTestiSubmit = (e) => {
+                    e.preventDefault();
+                    const payload = { ...publicTesti, id: Date.now(), rating: Number(publicTesti.rating) };
+                    setTestimonials([payload, ...testimonials]); 
+                    postToBackend('ADD_TESTI', payload); 
+                    setPublicTesti(initialTestiForm); 
+                    setIsTestiModalOpen(false);
+                    showToast("Terima kasih! Ulasan anda telah dikirim.");
+                };
+
+                // Laporan Handlers
+                const openReportModal = (media) => {
+                    setReportingMedia({ id: media.id, title: media.judul });
+                    setReportForm(initialReportForm);
+                    setIsReportModalOpen(true);
+                };
+
+                const handleReportSubmit = (e) => {
+                    e.preventDefault();
+                    const newReport = {
+                        id: Date.now(),
+                        mediaId: reportingMedia.id,
+                        mediaTitle: reportingMedia.title,
+                        name: reportForm.name,
+                        school: reportForm.school,
+                        reason: reportForm.reason,
+                        status: 'Menunggu',
+                        date: new Date().toISOString().split('T')[0]
+                    };
+                    setReports([newReport, ...reports]);
+                    postToBackend('ADD_REPORT', newReport);
+                    setIsReportModalOpen(false);
+                    showToast("Laporan berhasil dikirim dan akan segera dievaluasi.");
+                };
+
+                const resolveReport = (id) => {
+                    const updatedReports = reports.map(r => r.id === id ? { ...r, status: 'Selesai' } : r);
+                    setReports(updatedReports);
+                    postToBackend('EDIT_REPORT', updatedReports.find(r => r.id === id));
+                    showToast("Laporan ditandai telah dievaluasi.");
+                };
+
+                // ===== HANDLERS DELETE =====
+                const requestDelete = (type, id) => setDeleteModalConfig({ isOpen: true, type, id });
+
+                const executeDelete = () => {
+                    const { type, id } = deleteModalConfig;
+                    if(type === 'media') { setMediaList(mediaList.filter(m => m.id !== id)); postToBackend('DELETE_MEDIA', { id }); }
+                    if(type === 'kontributor') { setContributors(contributors.filter(c => c.id !== id)); postToBackend('DELETE_CONTRIB', { id }); }
+                    if(type === 'testimoni') { setTestimonials(testimonials.filter(t => t.id !== id)); postToBackend('DELETE_TESTI', { id }); }
+                    if(type === 'laporan') { setReports(reports.filter(r => r.id !== id)); postToBackend('DELETE_REPORT', { id }); }
+                    
+                    showToast('Data berhasil dihapus!');
+                    setDeleteModalConfig({ isOpen: false, type: null, id: null });
+                };
+
+                const getIcon = (jenis) => {
+                    if(!jenis) return 'fa-box-open';
+                    if(jenis.includes('Video')) return 'fa-play-circle';
+                    if(jenis.includes('E-book') || jenis.includes('Artikel')) return 'fa-book';
+                    if(jenis.includes('Game')) return 'fa-gamepad';
+                    if(jenis.toLowerCase().includes('media ajar')) return 'fa-chalkboard-teacher';
+                    if(jenis.includes('Presentasi')) return 'fa-desktop';
+                    return 'fa-box-open';
+                };
+
+                const navItems = [
+                    { id: 'hero', icon: 'fa-home', labelShort: 'Home', labelLong: 'Beranda' },
+                    { id: 'services', icon: 'fa-book-open', labelShort: 'Belajar', labelLong: 'Program Belajar' },
+                    { id: 'contributors', icon: 'fa-trophy', labelShort: 'Kontributor', labelLong: 'Kontributor' },
+                    { id: 'testimoni', icon: 'fa-comment-dots', labelShort: 'Ulasan', labelLong: 'Testimoni' },
+                ];
+
+                const getPoinFromRating = (rating) => {
+                    const r = Number(rating);
+                    if (r === 5) return 10; if (r === 4) return 8; if (r === 3) return 5;
+                    if (r === 2) return 4; if (r === 1) return 3; return 0;
+                };
+
+                const contributorsWithPoin = contributors.map(c => {
+                    let mediaPoin = 0;
+                    mediaList.forEach(m => { if (m.kontributor === c.name) mediaPoin += getPoinFromRating(m.rating); });
+                    return { ...c, displayPoin: (Number(c.xp) || 0) + mediaPoin };
+                });
+
+                const sortedContributors = [...contributorsWithPoin].sort((a, b) => b.displayPoin - a.displayPoin);
+
+                const totalKonten = mediaList.length;
+                const totalKontributor = contributors.length;
+                const totalPoin = contributorsWithPoin.reduce((sum, c) => sum + (Number(c.displayPoin) || 0), 0);
+
+                const itemsPerTestiPage = 6;
+                const [currentTestiPage, setCurrentTestiPage] = useState(0);
+                const totalTestiPages = Math.ceil(testimonials.length / itemsPerTestiPage) || 1;
+                const paginatedTestimonials = testimonials.slice(currentTestiPage * itemsPerTestiPage, (currentTestiPage + 1) * itemsPerTestiPage);
+
+                let filteredMedia = [];
+                let paginatedMedia = [];
+                let totalPages = 1;
+
+                if (currentTab === 'services' && selectedSubject) {
+                    let baseFiltered = mediaList.filter(m => m.mapel === selectedSubject.name);
+                    if (searchQuery.trim() !== '') {
+                        const query = searchQuery.toLowerCase();
+                        baseFiltered = baseFiltered.filter(m => 
+                            (m.judul && m.judul.toLowerCase().includes(query)) || 
+                            (m.kelas && m.kelas.toLowerCase().includes(query)) || 
+                            (m.jenis && m.jenis.toLowerCase().includes(query))
+                        );
+                    }
+                    filteredMedia = baseFiltered;
+                    totalPages = Math.ceil(filteredMedia.length / itemsPerPage) || 1;
+                    const safeCurrentPage = Math.min(currentPage, totalPages);
+                    if (safeCurrentPage !== currentPage && safeCurrentPage > 0) setCurrentPage(safeCurrentPage);
+                    const startIndex = (safeCurrentPage - 1) * itemsPerPage;
+                    paginatedMedia = filteredMedia.slice(startIndex, startIndex + itemsPerPage);
+                }
+
+                // Hitung laporan menunggu
+                const pendingReportsCount = reports.filter(r => r.status === 'Menunggu').length;
+
+                return (
+                    <div className="flex flex-col md:flex-row h-screen w-full bg-slate-50 relative font-sans text-sm text-slate-800 overflow-hidden antialiased">
+                        
+                        {/* Notifikasi Global */}
+                        {globalNotification && (
+                            <div className="fixed top-5 left-1/2 transform -translate-x-1/2 z-[200] bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 slide-down font-bold text-sm w-max max-w-[90vw] border border-slate-700">
+                                <i className="fas fa-check-circle text-emerald-400 text-lg"></i>
+                                <span className="truncate">{globalNotification}</span>
+                            </div>
+                        )}
+
+                        {/* Indikator Pemuatan Global */}
+                        {isLoadingAPI && (
+                            <div className="absolute top-0 left-0 w-full h-1 bg-red-100 z-50 overflow-hidden">
+                                <div className="h-full bg-red-500 w-1/3 animate-[slideRight_1s_ease-in-out_infinite]"></div>
+                            </div>
+                        )}
+
+                        {/* Header Mobile */}
+                        <header className="md:hidden bg-white shadow-sm z-40 px-5 py-3 flex justify-between items-center shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center text-white font-black text-lg shadow-md">R</div>
+                                <span className="font-extrabold text-xl tracking-tight text-slate-900">RIANG</span>
+                            </div>
+                            <button onClick={() => { if(isAdminAuthenticated) switchTab('admin'); else setShowPasswordModal(true); }} 
+                                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors relative ${isAdminAuthenticated && currentTab === 'admin' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700 active:bg-slate-200'}`}>
+                                <i className={`fas ${isAdminAuthenticated ? 'fa-cog' : 'fa-lock'} text-sm`}></i>
+                                {isAdminAuthenticated && pendingReportsCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></span>
+                                )}
+                            </button>
+                        </header>
+
+                        {/* Sidebar Desktop */}
+                        <nav className="hidden md:flex flex-col w-56 lg:w-64 bg-white border-r border-slate-200 shrink-0 z-40 h-full">
+                            <div className="p-5 flex items-center gap-3 border-b border-slate-100">
+                                <div className="w-10 h-10 bg-red-500 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-md shadow-red-500/30">R</div>
+                                <span className="font-extrabold text-2xl tracking-tight text-slate-900">RIANG</span>
+                            </div>
+                            <div className="flex-1 overflow-y-auto py-5 px-3 space-y-1 hide-scrollbar">
+                                {navItems.map(item => (
+                                    <button key={item.id} onClick={() => switchTab(item.id)} 
+                                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${currentTab === item.id ? 'bg-red-50 text-red-600 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                                        <i className={`fas ${item.icon} text-lg w-5 text-center`}></i> {item.labelLong}
+                                    </button>
+                                ))}
+                                <a href="https://s.id/donasi-riang" target="_blank" rel="noopener noreferrer" 
+                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-800 mt-2">
+                                    <i className="fas fa-hand-holding-heart text-lg w-5 text-center"></i> Donasi
+                                    <i className="fas fa-external-link-alt text-[10px] ml-auto opacity-70"></i>
+                                </a>
+                            </div>
+                            <div className="p-3 border-t border-slate-100">
+                                <button onClick={() => { if(isAdminAuthenticated) switchTab('admin'); else setShowPasswordModal(true); }} 
+                                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm transition-all ${currentTab === 'admin' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <i className={`fas ${isAdminAuthenticated ? 'fa-cog' : 'fa-lock'} text-lg w-5 text-center`}></i> Admin
+                                    </div>
+                                    {isAdminAuthenticated && pendingReportsCount > 0 && (
+                                        <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{pendingReportsCount}</span>
+                                    )}
+                                </button>
+                            </div>
+                        </nav>
+
+                        {/* Main Content */}
+                        <main className="flex-1 flex flex-col overflow-y-auto pb-20 md:pb-0 relative scroll-smooth">
+                            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 md:py-8 w-full flex-1">
+                                
+                                {/* HERO */}
+                                {currentTab === 'hero' && (
+                                    <div className="flex flex-col space-y-10 md:space-y-16 mt-2 md:mt-8 pb-10">
+                                        <div className="slide-up flex flex-col md:flex-row items-center gap-6 md:gap-10">
+                                            <div className="flex-1 space-y-4 md:space-y-5 text-center md:text-left">
+                                                <div className="inline-block px-3 py-1.5 bg-red-100 text-red-600 font-bold rounded-full text-xs mb-1">
+                                                    Platform Edukasi Digital
+                                                </div>
+                                                <h1 className="text-3xl md:text-4xl lg:text-5xl font-black text-slate-900 leading-tight">
+                                                    Belajar Jadi <br/><span className="text-red-500">RIANG</span> dan <span className="text-black-500">Menyenangkan!</span>
+                                                </h1>
+                                                <p className="text-slate-600 text-sm md:text-base leading-relaxed max-w-lg mx-auto md:mx-0">
+                                                    Silahkan akses ratusan materi interaktif yang dibuat oleh guru-guru SD hebat di kota Bandar Lampung.
+                                                </p>
+                                                <div className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-3 mt-4">
+                                                    <button onClick={() => switchTab('services')} className="w-full sm:w-auto px-6 py-3.5 md:py-3 bg-red-500 text-white text-sm md:text-base font-bold rounded-xl hover:bg-red-600 shadow-lg shadow-red-500/30 active:scale-95 transition-all flex items-center justify-center gap-2">
+                                                        Mulai Belajar <i className="fas fa-rocket text-sm"></i>
+                                                    </button>
+                                                    <a href="https://s.id/tambahkarya-riang" target="_blank" rel="noopener noreferrer" className="w-full sm:w-auto px-6 py-3.5 md:py-3 bg-red-700 text-white text-sm md:text-base font-bold rounded-xl hover:bg-red-800 shadow-lg shadow-red-700/30 active:scale-95 transition-all flex items-center justify-center gap-2">
+                                                        Tambah Karya <i className="fas fa-plus-circle text-sm"></i>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                            <div className="flex-1 w-full flex justify-center mt-6 md:mt-0 relative">
+                                                <img src="https://imgur.com/COXCNKU.png" alt="Ilustrasi Belajar" 
+                                                    className="w-full max-w-xs md:max-w-sm lg:max-w-md object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500"
+                                                    onError={(e) => { e.target.onerror = null; e.target.src="https://iili.io/qfFFbuj.md.png"; }} />
+                                            </div>
+                                        </div>
+
+                                        <div className="slide-up grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 w-full max-w-4xl mx-auto">
+                                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center hover:shadow-md transition">
+                                                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl"><i className="fas fa-book"></i></div>
+                                                <h3 className="text-3xl font-black text-slate-800">{totalKonten}</h3>
+                                                <p className="text-slate-500 text-sm font-medium mt-1">Materi Tersedia</p>
+                                            </div>
+                                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center hover:shadow-md transition">
+                                                <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl"><i className="fas fa-users"></i></div>
+                                                <h3 className="text-3xl font-black text-slate-800">{totalKontributor}</h3>
+                                                <p className="text-slate-500 text-sm font-medium mt-1">Kontributor Aktif</p>
+                                            </div>
+                                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center hover:shadow-md transition">
+                                                <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl"><i className="fas fa-star"></i></div>
+                                                <h3 className="text-3xl font-black text-slate-800">{totalPoin}</h3>
+                                                <p className="text-slate-500 text-sm font-medium mt-1">Total Poin Edukasi</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* SERVICES */}
+                                {currentTab === 'services' && (
+                                    <div className="fade-in space-y-6">
+                                        {!selectedSubject ? (
+                                            <>
+                                                <div className="text-center md:text-left mb-8">
+                                                    <h2 className="text-2xl md:text-3xl font-black text-slate-900">Program Belajar</h2>
+                                                    <p className="text-slate-500 mt-2">Pilih mata pelajaran yang ingin dipelajari hari ini.</p>
+                                                </div>
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                                                    {subjects.map(sub => (
+                                                        <div key={sub.id} onClick={() => setSelectedSubject(sub)}
+                                                            className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center gap-4 cursor-pointer hover:shadow-md hover:border-red-200 transition-all hover:-translate-y-1">
+                                                            <div className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl ${sub.color}`}>
+                                                                <i className={sub.icon}></i>
+                                                            </div>
+                                                            <span className="font-bold text-slate-700 text-center">{sub.name}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="slide-up space-y-6">
+                                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                                    <button onClick={() => setSelectedSubject(null)} className="flex items-center gap-2 text-slate-500 hover:text-red-600 transition font-medium">
+                                                        <i className="fas fa-arrow-left"></i> Kembali ke Mata Pelajaran
+                                                    </button>
+                                                    <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 w-full sm:w-auto">
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${selectedSubject.color}`}>
+                                                            <i className={selectedSubject.icon}></i>
+                                                        </div>
+                                                        <span className="font-bold text-slate-800">{selectedSubject.name}</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="relative">
+                                                    <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                                                    <input type="text" placeholder="Cari judul, kelas, atau jenis..." 
+                                                        className="w-full bg-white border border-slate-200 rounded-xl pl-11 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-red-500 shadow-sm"
+                                                        value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                    {paginatedMedia.length > 0 ? paginatedMedia.map(m => {
+                                                        const likes = likesData[m.id] ? likesData[m.id].count : 0;
+                                                        const isLiked = user && likesData[m.id] && likesData[m.id].likedBy && likesData[m.id].likedBy.includes(user.uid);
+                                                        
+                                                        return (
+                                                            <div key={m.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-all flex flex-col h-full relative group">
+                                                                {/* Tombol Laporkan Pojok */}
+                                                                <button onClick={() => openReportModal(m)} className="absolute top-2 left-2 z-10 w-8 h-8 bg-white/80 backdrop-blur rounded-lg text-slate-400 hover:text-red-500 hover:bg-white flex items-center justify-center shadow-sm opacity-0 group-hover:opacity-100 transition-opacity" title="Laporkan Konten Tidak Tepat">
+                                                                    <i className="fas fa-flag text-xs"></i>
+                                                                </button>
+
+                                                                <div className="h-32 bg-slate-100 flex items-center justify-center text-slate-300 relative">
+                                                                    <i className={`fas ${getIcon(m.jenis)} text-4xl`}></i>
+                                                                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur text-xs font-bold px-2 py-1 rounded-lg text-slate-700 flex items-center gap-1 shadow-sm">
+                                                                        <i className="fas fa-star text-amber-400"></i> {m.rating}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="p-5 flex-1 flex flex-col">
+                                                                    <div className="flex gap-2 mb-2 flex-wrap">
+                                                                        <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 px-2 py-1 rounded">{m.kelas}</span>
+                                                                        <span className="text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-600 px-2 py-1 rounded truncate">{m.jenis}</span>
+                                                                    </div>
+                                                                    <h3 className="font-bold text-lg text-slate-800 leading-tight mb-2 line-clamp-2">{m.judul}</h3>
+                                                                    <p className="text-slate-500 text-sm mb-4 line-clamp-2">{m.deskripsi}</p>
+                                                                    
+                                                                    <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
+                                                                                {m.kontributor.charAt(0)}
+                                                                            </div>
+                                                                            <span className="text-xs font-medium text-slate-600 truncate max-w-[100px]">{m.kontributor}</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <button onClick={() => handleLikeToggle(m.id)} className={`text-sm flex items-center gap-1 transition mr-2 ${isLiked ? 'text-red-500' : 'text-slate-400 hover:text-red-500'}`}>
+                                                                                <i className={`${isLiked ? 'fas' : 'far'} fa-heart`}></i> <span className="text-xs font-medium">{likes}</span>
+                                                                            </button>
+                                                                            <a href={m.link} target="_blank" rel="noopener noreferrer" className="bg-red-500 hover:bg-red-600 text-white w-8 h-8 rounded-lg flex items-center justify-center transition shadow-sm">
+                                                                                <i className="fas fa-external-link-alt text-xs"></i>
+                                                                            </a>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }) : (
+                                                        <div className="col-span-full py-10 text-center text-slate-500">
+                                                            <i className="fas fa-box-open text-4xl mb-3 text-slate-300"></i>
+                                                            <p>Belum ada materi untuk mata pelajaran ini.</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {totalPages > 1 && (
+                                                    <div className="flex justify-center items-center gap-2 mt-8">
+                                                        <button onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}
+                                                            className="w-10 h-10 rounded-xl flex items-center justify-center border border-slate-200 bg-white text-slate-600 disabled:opacity-50 hover:bg-slate-50">
+                                                            <i className="fas fa-chevron-left text-sm"></i>
+                                                        </button>
+                                                        <span className="font-medium text-slate-600 text-sm">Hal {currentPage} dari {totalPages}</span>
+                                                        <button onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}
+                                                            className="w-10 h-10 rounded-xl flex items-center justify-center border border-slate-200 bg-white text-slate-600 disabled:opacity-50 hover:bg-slate-50">
+                                                            <i className="fas fa-chevron-right text-sm"></i>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* CONTRIBUTORS */}
+                                {currentTab === 'contributors' && (
+                                    <div className="fade-in space-y-6">
+                                        <div className="text-center md:text-left mb-8">
+                                            <h2 className="text-2xl md:text-3xl font-black text-slate-900">Pahlawan Edukasi</h2>
+                                            <p className="text-slate-500 mt-2">Terima kasih kepada para kontributor hebat platform RIANG.</p>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {sortedContributors.map((c, index) => (
+                                                <div key={c.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-center text-center hover:shadow-md transition relative overflow-hidden group">
+                                                    {index < 3 && (
+                                                        <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-amber-200 to-transparent flex items-start justify-end p-2 opacity-50">
+                                                            <i className="fas fa-medal text-amber-500 text-xl"></i>
+                                                        </div>
+                                                    )}
+                                                    <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-red-500 to-orange-400 text-white flex items-center justify-center text-3xl font-black shadow-lg mb-4 ring-4 ring-red-50 group-hover:scale-110 transition-transform">
+                                                        {c.initial || c.name.charAt(0)}
+                                                    </div>
+                                                    <h3 className="font-bold text-lg text-slate-800">{c.name}</h3>
+                                                    <p className="text-slate-500 text-xs mb-3 font-medium">{c.role}</p>
+                                                    <div className="bg-slate-50 w-full py-2 rounded-lg mb-3">
+                                                        <div className="flex justify-center items-center gap-2 text-sm">
+                                                            <i className="fas fa-star text-amber-400"></i>
+                                                            <span className="font-bold text-slate-700">{c.displayPoin} Poin</span>
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 line-clamp-2">{c.desc}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* TESTIMONI */}
+                                {currentTab === 'testimoni' && (
+                                    <div className="fade-in space-y-6">
+                                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8 text-center md:text-left">
+                                            <div>
+                                                <h2 className="text-2xl md:text-3xl font-black text-slate-900">Kata Mereka</h2>
+                                                <p className="text-slate-500 mt-2">Ulasan jujur pengguna platform RIANG.</p>
+                                            </div>
+                                            <button onClick={() => setIsTestiModalOpen(true)} className="px-5 py-2.5 bg-red-100 text-red-600 font-bold rounded-xl hover:bg-red-200 transition text-sm">
+                                                <i className="fas fa-plus mr-2"></i>Tulis Ulasan
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {paginatedTestimonials.map(t => (
+                                                <div key={t.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full">
+                                                    <div className="flex text-amber-400 text-xs mb-3">
+                                                        {[...Array(5)].map((_, i) => (
+                                                            <i key={i} className={i < Number(t.rating) ? "fas fa-star" : "far fa-star text-slate-300"}></i>
+                                                        ))}
+                                                    </div>
+                                                    <p className="text-slate-600 text-sm italic mb-4 flex-1">"{t.quote}"</p>
+                                                    <div className="flex items-center gap-3 pt-4 border-t border-slate-100">
+                                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500">
+                                                            {t.name.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-bold text-slate-800 text-sm">{t.name}</h4>
+                                                            <p className="text-[10px] text-slate-500 font-medium uppercase">{t.role}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {totalTestiPages > 1 && (
+                                            <div className="flex justify-center items-center gap-2 mt-8">
+                                                <button onClick={() => setCurrentTestiPage(p => Math.max(0, p - 1))} disabled={currentTestiPage === 0}
+                                                    className="w-10 h-10 rounded-xl bg-white border border-slate-200 disabled:opacity-50">
+                                                    <i className="fas fa-chevron-left text-slate-500"></i>
+                                                </button>
+                                                <span className="text-sm font-medium text-slate-600">{currentTestiPage + 1} / {totalTestiPages}</span>
+                                                <button onClick={() => setCurrentTestiPage(p => Math.min(totalTestiPages - 1, p + 1))} disabled={currentTestiPage === totalTestiPages - 1}
+                                                    className="w-10 h-10 rounded-xl bg-white border border-slate-200 disabled:opacity-50">
+                                                    <i className="fas fa-chevron-right text-slate-500"></i>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* ADMIN PANEL */}
+                                {currentTab === 'admin' && isAdminAuthenticated && (
+                                    <div className="fade-in space-y-6">
+                                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                                            <div>
+                                                <h2 className="text-2xl font-black text-slate-900">Panel Administrator</h2>
+                                                <p className="text-slate-500 text-sm">Kelola data platform RIANG.</p>
+                                            </div>
+                                            <button onClick={() => { setIsAdminAuthenticated(false); switchTab('hero'); }} className="px-4 py-2 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300 text-sm transition">
+                                                <i className="fas fa-sign-out-alt mr-2"></i>Keluar
+                                            </button>
+                                        </div>
+
+                                        <div className="flex overflow-x-auto gap-2 border-b border-slate-200 pb-2 hide-scrollbar">
+                                            <button onClick={() => setAdminTab('media')} className={`px-4 py-2 text-sm font-bold rounded-t-lg transition whitespace-nowrap ${adminTab === 'media' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>Kelola Media</button>
+                                            <button onClick={() => setAdminTab('kontributor')} className={`px-4 py-2 text-sm font-bold rounded-t-lg transition whitespace-nowrap ${adminTab === 'kontributor' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>Kelola Kontributor</button>
+                                            <button onClick={() => setAdminTab('testimoni')} className={`px-4 py-2 text-sm font-bold rounded-t-lg transition whitespace-nowrap ${adminTab === 'testimoni' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>Kelola Testimoni</button>
+                                            <button onClick={() => setAdminTab('laporan')} className={`px-4 py-2 text-sm font-bold rounded-t-lg transition whitespace-nowrap flex items-center gap-2 ${adminTab === 'laporan' ? 'border-b-2 border-red-500 text-red-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                                                Kelola Laporan {pendingReportsCount > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingReportsCount}</span>}
+                                            </button>
+                                        </div>
+
+                                        {/* TABLE: MEDIA */}
+                                        {adminTab === 'media' && (
+                                            <div className="space-y-4">
+                                                <div className="flex justify-end">
+                                                    <button onClick={openAddMedia} className="px-4 py-2.5 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 text-sm shadow-sm transition flex items-center gap-2">
+                                                        <i className="fas fa-plus"></i> Tambah Media
+                                                    </button>
+                                                </div>
+
+                                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-left text-sm">
+                                                            <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-xs border-b border-slate-200">
+                                                                <tr>
+                                                                    <th className="px-4 py-3">ID/Judul</th>
+                                                                    <th className="px-4 py-3">Mapel/Kelas</th>
+                                                                    <th className="px-4 py-3">Kontributor</th>
+                                                                    <th className="px-4 py-3 text-right">Aksi</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-100">
+                                                                {mediaList.map(m => (
+                                                                    <tr key={m.id} className="hover:bg-slate-50">
+                                                                        <td className="px-4 py-3">
+                                                                            <div className="font-bold text-slate-800 line-clamp-1">{m.judul}</div>
+                                                                            <div className="text-xs text-slate-400">{m.jenis}</div>
+                                                                        </td>
+                                                                        <td className="px-4 py-3">
+                                                                            <div className="whitespace-nowrap">{m.mapel}</div>
+                                                                            <div className="text-xs text-slate-500">{m.kelas}</div>
+                                                                        </td>
+                                                                        <td className="px-4 py-3 truncate max-w-[120px]">{m.kontributor}</td>
+                                                                        <td className="px-4 py-3 text-right">
+                                                                            <button onClick={() => openEditMedia(m)} className="w-8 h-8 rounded-lg bg-blue-50 text-blue-500 hover:bg-blue-500 hover:text-white transition mr-2" title="Edit">
+                                                                                <i className="fas fa-edit text-xs"></i>
+                                                                            </button>
+                                                                            <button onClick={() => requestDelete('media', m.id)} className="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition" title="Hapus">
+                                                                                <i className="fas fa-trash text-xs"></i>
+                                                                            </button>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* TABLE: KONTRIBUTOR */}
+                                        {adminTab === 'kontributor' && (
+                                            <div className="space-y-4">
+                                                <div className="flex justify-end">
+                                                    <button onClick={openAddContrib} className="px-4 py-2.5 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 text-sm shadow-sm transition flex items-center gap-2">
+                                                        <i className="fas fa-plus"></i> Tambah Kontributor
+                                                    </button>
+                                                </div>
+
+                                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-left text-sm">
+                                                            <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-xs border-b border-slate-200">
+                                                                <tr>
+                                                                    <th className="px-4 py-3">Nama/Peran</th>
+                                                                    <th className="px-4 py-3">Level & Inisial</th>
+                                                                    <th className="px-4 py-3">Poin Dasar</th>
+                                                                    <th className="px-4 py-3 text-right">Aksi</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-100">
+                                                                {contributors.map(c => (
+                                                                    <tr key={c.id} className="hover:bg-slate-50">
+                                                                        <td className="px-4 py-3">
+                                                                            <div className="font-bold text-slate-800">{c.name}</div>
+                                                                            <div className="text-xs text-slate-400">{c.role}</div>
+                                                                        </td>
+                                                                        <td className="px-4 py-3">
+                                                                            <div className="whitespace-nowrap font-medium text-slate-600">{c.level || '-'}</div>
+                                                                            <div className="text-[10px] font-bold uppercase bg-slate-100 text-slate-500 px-2 py-0.5 rounded inline-block mt-1">Inisial: {c.initial || c.name.charAt(0)}</div>
+                                                                        </td>
+                                                                        <td className="px-4 py-3">{c.xp || 0} XP</td>
+                                                                        <td className="px-4 py-3 text-right">
+                                                                            <button onClick={() => openEditContrib(c)} className="w-8 h-8 rounded-lg bg-blue-50 text-blue-500 hover:bg-blue-500 hover:text-white transition mr-2" title="Edit">
+                                                                                <i className="fas fa-edit text-xs"></i>
+                                                                            </button>
+                                                                            <button onClick={() => requestDelete('kontributor', c.id)} className="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition" title="Hapus">
+                                                                                <i className="fas fa-trash text-xs"></i>
+                                                                            </button>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* TABLE: TESTIMONI */}
+                                        {adminTab === 'testimoni' && (
+                                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-left text-sm">
+                                                        <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-xs border-b border-slate-200">
+                                                            <tr>
+                                                                <th className="px-4 py-3">Nama</th>
+                                                                <th className="px-4 py-3">Ulasan</th>
+                                                                <th className="px-4 py-3 text-right">Aksi</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                            {testimonials.map(t => (
+                                                                <tr key={t.id} className="hover:bg-slate-50">
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="font-bold text-slate-800">{t.name}</div>
+                                                                        <div className="text-xs text-amber-500"><i className="fas fa-star"></i> {t.rating}</div>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 italic max-w-xs truncate">"{t.quote}"</td>
+                                                                    <td className="px-4 py-3 text-right flex justify-end">
+                                                                        <button onClick={() => openEditTesti(t)} className="w-8 h-8 rounded-lg bg-blue-50 text-blue-500 hover:bg-blue-500 hover:text-white transition mr-2" title="Edit">
+                                                                            <i className="fas fa-edit text-xs"></i>
+                                                                        </button>
+                                                                        <button onClick={() => requestDelete('testimoni', t.id)} className="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition" title="Hapus">
+                                                                            <i className="fas fa-trash text-xs"></i>
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* TABLE: LAPORAN */}
+                                        {adminTab === 'laporan' && (
+                                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                                {reports.length === 0 ? (
+                                                    <div className="py-10 text-center text-slate-500">
+                                                        <i className="fas fa-check-circle text-4xl mb-3 text-emerald-400"></i>
+                                                        <p>Belum ada laporan. Semua konten aman!</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-left text-sm">
+                                                            <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-xs border-b border-slate-200">
+                                                                <tr>
+                                                                    <th className="px-4 py-3">Tanggal & Status</th>
+                                                                    <th className="px-4 py-3">Pelapor & Sekolah</th>
+                                                                    <th className="px-4 py-3">Media & Alasan</th>
+                                                                    <th className="px-4 py-3 text-right">Aksi</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-100">
+                                                                {reports.map(r => (
+                                                                    <tr key={r.id} className="hover:bg-slate-50">
+                                                                        <td className="px-4 py-3">
+                                                                            <div className="text-xs text-slate-500 mb-1">{r.date}</div>
+                                                                            <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded ${r.status === 'Menunggu' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                                                                {r.status}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="px-4 py-3">
+                                                                            <div className="font-bold text-slate-800">{r.name}</div>
+                                                                            <div className="text-xs text-slate-500">{r.school}</div>
+                                                                        </td>
+                                                                        <td className="px-4 py-3 max-w-xs">
+                                                                            <div className="font-bold text-blue-600 text-xs mb-1">Materi: {r.mediaTitle}</div>
+                                                                            <div className="text-slate-600 italic line-clamp-2">"{r.reason}"</div>
+                                                                        </td>
+                                                                        <td className="px-4 py-3 text-right flex justify-end">
+                                                                            {r.status === 'Menunggu' && (
+                                                                                <button onClick={() => resolveReport(r.id)} className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-500 hover:bg-emerald-500 hover:text-white transition mr-2" title="Tandai Selesai">
+                                                                                    <i className="fas fa-check text-xs"></i>
+                                                                                </button>
+                                                                            )}
+                                                                            <button onClick={() => requestDelete('laporan', r.id)} className="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition" title="Hapus Laporan">
+                                                                                <i className="fas fa-trash text-xs"></i>
+                                                                            </button>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                            </div>
+                        </main>
+
+                        {/* MODALS */}
+
+                        {/* Login Admin */}
+                        {showPasswordModal && (
+                            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[100] px-4">
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 slide-up">
+                                    <h3 className="text-lg font-bold text-slate-800 mb-2">Login Administrator</h3>
+                                    <p className="text-sm text-slate-500 mb-4">Masukkan password untuk akses panel admin.</p>
+                                    <form onSubmit={handleAuth} className="space-y-4">
+                                        <input type="password" value={adminPasswordInput} onChange={(e) => setAdminPasswordInput(e.target.value)}
+                                            placeholder="Password Admin" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-800 text-sm" autoFocus required />
+                                        {passwordError && <p className="text-xs text-red-500 font-medium">{passwordError}</p>}
+                                        <div className="flex gap-3">
+                                            <button type="button" onClick={() => { setShowPasswordModal(false); setPasswordError(''); }} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 text-sm transition">Batal</button>
+                                            <button type="submit" className="flex-1 py-3 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 text-sm transition">Login</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Modal Laporan Konten */}
+                        {isReportModalOpen && reportingMedia && (
+                            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[100] px-4 py-6">
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 slide-up max-h-[90vh] overflow-y-auto hide-scrollbar border-t-4 border-red-500">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className="w-10 h-10 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-lg">
+                                            <i className="fas fa-flag"></i>
+                                        </div>
+                                        <h3 className="text-xl font-black text-slate-800">Laporkan Konten</h3>
+                                    </div>
+                                    <p className="text-sm text-slate-500 mb-4">Anda melaporkan materi: <span className="font-bold text-slate-800">{reportingMedia.title}</span></p>
+                                    
+                                    <form onSubmit={handleReportSubmit} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Nama Lengkap</label>
+                                            <input type="text" required value={reportForm.name} onChange={e => setReportForm({...reportForm, name: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm" placeholder="Masukkan nama Anda..." />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Asal Sekolah / Instansi</label>
+                                            <input type="text" required value={reportForm.school} onChange={e => setReportForm({...reportForm, school: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm" placeholder="Contoh: SDN 1 Bandar Lampung" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Alasan / Keterangan</label>
+                                            <textarea required value={reportForm.reason} onChange={e => setReportForm({...reportForm, reason: e.target.value})} rows="4" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm resize-none" placeholder="Jelaskan mengapa konten ini tidak tepat (misal: link rusak, konten mengandung SARA, salah materi, dll)..."></textarea>
+                                        </div>
+                                        <div className="flex gap-3 pt-2">
+                                            <button type="button" onClick={() => setIsReportModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 text-sm transition">Batal</button>
+                                            <button type="submit" className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 shadow-lg shadow-red-500/30 text-sm transition">Kirim Laporan</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Modal Add/Edit Media */}
+                        {isAddMediaModalOpen && (
+                            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[100] px-4 py-6">
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 slide-up max-h-[90vh] overflow-y-auto hide-scrollbar">
+                                    <h3 className="text-xl font-bold text-slate-800 mb-1">{editingMediaId ? 'Edit Media' : 'Tambah Media Baru'}</h3>
+                                    <p className="text-sm text-slate-500 mb-5">Lengkapi formulir di bawah untuk menyimpan materi pembelajaran.</p>
+                                    
+                                    <form onSubmit={handleMediaSubmit} className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">Judul Materi</label>
+                                                <input type="text" required value={mediaForm.judul} onChange={e => setMediaForm({...mediaForm, judul: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm" placeholder="Contoh: Belajar Pecahan" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">Link Media (URL)</label>
+                                                <input type="url" required value={mediaForm.link} onChange={e => setMediaForm({...mediaForm, link: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm" placeholder="https://..." />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">Kontributor</label>
+                                                <select required value={mediaForm.kontributor} onChange={e => setMediaForm({...mediaForm, kontributor: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm">
+                                                    <option value="">Pilih Kontributor</option>
+                                                    {contributors.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">Nama Kurator</label>
+                                                <input type="text" required value={mediaForm.kurator} onChange={e => setMediaForm({...mediaForm, kurator: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm" placeholder="Nama Admin / Kurator" />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">Mata Pelajaran</label>
+                                                <select required value={mediaForm.mapel} onChange={e => setMediaForm({...mediaForm, mapel: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm">
+                                                    <option value="">Pilih Mapel</option>
+                                                    {subjects.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">Kelas</label>
+                                                <select required value={mediaForm.kelas} onChange={e => setMediaForm({...mediaForm, kelas: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm">
+                                                    <option value="">Pilih Kelas</option>
+                                                    {["Kelas 1", "Kelas 2", "Kelas 3", "Kelas 4", "Kelas 5", "Kelas 6", "Umum"].map(k => <option key={k} value={k}>{k}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">Jenis Media</label>
+                                                <select required value={mediaForm.jenis} onChange={e => setMediaForm({...mediaForm, jenis: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm">
+                                                    <option value="">Pilih Jenis</option>
+                                                    {["Media Ajar", "Video Pembelajaran", "E-book", "Artikel", "Game Interaktif", "Presentasi", "Latihan Soal", "Lainnya"].map(j => <option key={j} value={j}>{j}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Rating Dasar</label>
+                                            <select required value={mediaForm.rating} onChange={e => setMediaForm({...mediaForm, rating: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm">
+                                                <option value="5">5 Bintang</option><option value="4">4 Bintang</option><option value="3">3 Bintang</option><option value="2">2 Bintang</option><option value="1">1 Bintang</option>
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Deskripsi Singkat</label>
+                                            <textarea required value={mediaForm.deskripsi} onChange={e => setMediaForm({...mediaForm, deskripsi: e.target.value})} rows="3" className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm resize-none" placeholder="Tuliskan deskripsi materi..."></textarea>
+                                        </div>
+
+                                        <div className="flex gap-3 pt-4 border-t border-slate-100">
+                                            <button type="button" onClick={() => setIsAddMediaModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 text-sm transition">Batal</button>
+                                            <button type="submit" className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 shadow-lg shadow-red-500/30 text-sm transition">{editingMediaId ? 'Simpan Perubahan' : 'Simpan Media'}</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Modal Add/Edit Kontributor */}
+                        {isAddContribModalOpen && (
+                            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[100] px-4 py-6">
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 slide-up max-h-[90vh] overflow-y-auto hide-scrollbar">
+                                    <h3 className="text-xl font-bold text-slate-800 mb-1">{editingContribId ? 'Edit Kontributor' : 'Tambah Kontributor Baru'}</h3>
+                                    <p className="text-sm text-slate-500 mb-5">Lengkapi formulir untuk menyimpan data kontributor.</p>
+                                    
+                                    <form onSubmit={handleContribSubmit} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Nama Kontributor</label>
+                                            <input type="text" required value={contribForm.name} onChange={e => setContribForm({...contribForm, name: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm" placeholder="Contoh: Nisa Salsabila" />
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">Jabatan</label>
+                                                <input type="text" required value={contribForm.role} onChange={e => setContribForm({...contribForm, role: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm" placeholder="Contoh: Guru SDN 1" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">Inisial (Maks 2 Huruf)</label>
+                                                <input type="text" required maxLength="2" value={contribForm.initial} onChange={e => setContribForm({...contribForm, initial: e.target.value.toUpperCase()})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm uppercase" placeholder="Contoh: NS" />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Level</label>
+                                            <select required value={contribForm.level} onChange={e => setContribForm({...contribForm, level: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm">
+                                                <option value="">Pilih Level Kontributor</option>
+                                                <option value="Level 1 - Newbie">Level 1 - Newbie</option>
+                                                <option value="Level 2 - Contributors">Level 2 - Contributors</option>
+                                                <option value="Level 3 - Master">Level 3 - Master</option>
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Deskripsi Singkat</label>
+                                            <textarea required value={contribForm.desc} onChange={e => setContribForm({...contribForm, desc: e.target.value})} rows="3" className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm resize-none" placeholder="Tuliskan deskripsi atau pencapaian kontributor..."></textarea>
+                                        </div>
+
+                                        <div className="flex gap-3 pt-4 border-t border-slate-100">
+                                            <button type="button" onClick={() => setIsAddContribModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 text-sm transition">Batal</button>
+                                            <button type="submit" className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 shadow-lg shadow-red-500/30 text-sm transition">{editingContribId ? 'Simpan Perubahan' : 'Simpan Kontributor'}</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Modal Edit Testimoni (Khusus Admin) */}
+                        {isEditTestiModalOpen && (
+                            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[100] px-4 py-6">
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 slide-up max-h-[90vh] overflow-y-auto hide-scrollbar">
+                                    <h3 className="text-xl font-bold text-slate-800 mb-1">Edit Testimoni</h3>
+                                    <p className="text-sm text-slate-500 mb-5">Perbarui data ulasan pengguna.</p>
+                                    <form onSubmit={handleAdminTestiSubmit} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Nama / Inisial</label>
+                                            <input type="text" required value={adminTestiForm.name} onChange={e => setAdminTestiForm({...adminTestiForm, name: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Peran</label>
+                                            <select required value={adminTestiForm.role} onChange={e => setAdminTestiForm({...adminTestiForm, role: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm">
+                                                <option value="Siswa SD">Siswa SD</option><option value="Guru">Guru / Tenaga Pendidik</option><option value="Orang Tua">Orang Tua Wali</option><option value="Umum">Umum</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Rating</label>
+                                            <select required value={adminTestiForm.rating} onChange={e => setAdminTestiForm({...adminTestiForm, rating: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm">
+                                                <option value="5">5 Bintang</option><option value="4">4 Bintang</option><option value="3">3 Bintang</option><option value="2">2 Bintang</option><option value="1">1 Bintang</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Ulasan</label>
+                                            <textarea required value={adminTestiForm.quote} onChange={e => setAdminTestiForm({...adminTestiForm, quote: e.target.value})} rows="3" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm resize-none"></textarea>
+                                        </div>
+                                        <div className="flex gap-3 pt-2">
+                                            <button type="button" onClick={() => setIsEditTestiModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 text-sm transition">Batal</button>
+                                            <button type="submit" className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 shadow-lg shadow-red-500/30 text-sm transition">Simpan Perubahan</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Modal Tambah Testimoni (Publik) */}
+                        {isTestiModalOpen && (
+                            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[100] px-4 py-6">
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 slide-up max-h-[90vh] overflow-y-auto hide-scrollbar">
+                                    <h3 className="text-xl font-bold text-slate-800 mb-1">Tulis Ulasan Anda</h3>
+                                    <p className="text-sm text-slate-500 mb-5">Bagaimana pengalaman Anda menggunakan platform RIANG?</p>
+                                    <form onSubmit={handlePublicTestiSubmit} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Nama / Inisial</label>
+                                            <input type="text" required value={publicTesti.name} onChange={e => setPublicTesti({...publicTesti, name: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm" placeholder="Contoh: Budi S." />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Peran</label>
+                                            <select required value={publicTesti.role} onChange={e => setPublicTesti({...publicTesti, role: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm">
+                                                <option value="">Pilih peran Anda</option>
+                                                <option value="Siswa SD">Siswa SD</option><option value="Guru">Guru / Tenaga Pendidik</option><option value="Orang Tua">Orang Tua Wali</option><option value="Umum">Umum</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Rating</label>
+                                            <select required value={publicTesti.rating} onChange={e => setPublicTesti({...publicTesti, rating: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm">
+                                                <option value="5">5 Bintang - Sangat Membantu!</option><option value="4">4 Bintang - Bagus</option><option value="3">3 Bintang - Cukup</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">Ulasan Singkat</label>
+                                            <textarea required value={publicTesti.quote} onChange={e => setPublicTesti({...publicTesti, quote: e.target.value})} rows="3" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 text-sm resize-none" placeholder="Tuliskan pendapat Anda..."></textarea>
+                                        </div>
+                                        <div className="flex gap-3 pt-2">
+                                            <button type="button" onClick={() => setIsTestiModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 text-sm transition">Batal</button>
+                                            <button type="submit" className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 shadow-lg shadow-red-500/30 text-sm transition">Kirim Ulasan</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Modal Konfirmasi Hapus */}
+                        {deleteModalConfig.isOpen && (
+                            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[150] px-4">
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-6 slide-up text-center">
+                                    <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+                                        <i className="fas fa-exclamation-triangle"></i>
+                                    </div>
+                                    <h3 className="text-lg font-bold text-slate-800 mb-2">Hapus Data?</h3>
+                                    <p className="text-sm text-slate-500 mb-6">Tindakan ini tidak dapat dibatalkan.</p>
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setDeleteModalConfig({isOpen:false, type:null, id:null})} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 text-sm transition">Batal</button>
+                                        <button onClick={executeDelete} className="flex-1 py-2.5 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 text-sm transition shadow-sm">Ya, Hapus</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Navigasi Mobile */}
+                        <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 flex justify-around items-center px-2 py-2 pb-safe z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+                            {navItems.map(item => (
+                                <button key={item.id} onClick={() => switchTab(item.id)} className={`flex flex-col items-center justify-center w-16 h-14 rounded-xl transition-all ${currentTab === item.id ? 'text-red-500 scale-105' : 'text-slate-400 hover:text-slate-600'}`}>
+                                    <i className={`fas ${item.icon} text-lg mb-1`}></i>
+                                    <span className="text-[10px] font-bold">{item.labelShort}</span>
+                                </button>
+                            ))}
+                        </nav>
+                    </div>
+                );
+            }
+
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+        };
+
+        if (window.FirebaseAPI) {
+            startReactApp();
+        } else {
+            window.addEventListener('firebase-loaded', startReactApp);
+        }
+    </script>
+</body>
+</html>
